@@ -5,6 +5,7 @@ import (
 	"context"
 	"crypto/md5"
 	"encoding/base64"
+	"errors"
 	"fmt"
 	"io"
 	"net/http"
@@ -37,7 +38,8 @@ func (s *Storage) Get(ctx context.Context, u *url.URL) (body io.ReadCloser, head
 		Key:    aws.String(path.Join(s.Prefix, Key(*u))),
 	})
 	if err != nil {
-		if _, ok := err.(*types.NoSuchKey); ok {
+		var nsk *types.NoSuchKey
+		if errors.As(err, &nsk) {
 			return nil, nil, nil
 		}
 		return nil, nil, err
