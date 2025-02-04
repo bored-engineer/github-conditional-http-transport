@@ -15,6 +15,7 @@ import (
 	"github.com/aws/aws-sdk-go-v2/aws"
 	"github.com/aws/aws-sdk-go-v2/config"
 	"github.com/aws/aws-sdk-go-v2/service/s3"
+	"github.com/aws/aws-sdk-go-v2/service/s3/types"
 )
 
 // Key generates the S3 key from the URL.
@@ -36,6 +37,9 @@ func (s *Storage) Get(ctx context.Context, u *url.URL) (body io.ReadCloser, head
 		Key:    aws.String(path.Join(s.Prefix, Key(*u))),
 	})
 	if err != nil {
+		if _, ok := err.(*types.NoSuchKey); ok {
+			return nil, nil, nil
+		}
 		return nil, nil, err
 	}
 	headers := make(http.Header, len(out.Metadata))
