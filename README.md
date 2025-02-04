@@ -1,4 +1,4 @@
-# GitHub Conditional HTTP Transport
+# GitHub Conditional HTTP Transport [![Go Reference](https://pkg.go.dev/badge/github.com/bored-engineer/github-conditional-http-transport.svg)](https://pkg.go.dev/github.com/bored-engineer/github-conditional-http-transport)
 A Golang [http.RoundTripper](https://pkg.go.dev/net/http#RoundTripper) optimized for caching responses from GitHub's REST API via [conditional requests (ETag)](https://docs.github.com/en/rest/using-the-rest-api/best-practices-for-using-the-rest-api?apiVersion=2022-11-28#use-conditional-requests-if-appropriate).
 
 ## GitHub REST API Rate-Limits
