@@ -139,3 +139,37 @@ Using this reverse-engineered `ETag` algorithm, we can develop a [http.RoundTrip
 * If the HTTP response code is `200 OK` or `201 Created` and an `ETag` header is present
     * Store the response bytes in the cache storage
 * Return the HTTP response
+
+## Usage
+Here is some example usage using the [bbolt](./bbolt) storage backend and the [google/go-github](https://github.com/google/go-github) client:
+```go
+package main
+
+import (
+	"context"
+	"log"
+	"net/http"
+	"os"
+
+	ghtransport "github.com/bored-engineer/github-conditional-http-transport"
+	bboltstorage "github.com/bored-engineer/github-conditional-http-transport/bbolt"
+	"github.com/google/go-github/v68/github"
+)
+
+func main() {
+	client := github.NewClient(&http.Client{
+		Transport: ghtransport.NewTransport(
+			bboltstorage.MustOpen("cache.db", 0644, nil, nil),
+			http.DefaultTransport,
+		),
+	}).WithAuthToken(os.Getenv("GITHUB_TOKEN"))
+
+	for loop := 0; loop < 3; loop++ {
+		_, resp, err := client.Users.Get(context.TODO(), "bored-engineer")
+		if err != nil {
+			log.Fatalf("(*github.Client).Users.Get failed: %v", err)
+		}
+		log.Println(resp.Header.Get("X-Ratelimit-Used"))
+	}
+}
+```
