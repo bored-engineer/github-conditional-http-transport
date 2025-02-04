@@ -48,25 +48,25 @@ func (s *Storage) Put(ctx context.Context, u *url.URL, body []byte, header http.
 }
 
 // Open is a wrapper around bbolt.Open that returns an initialized Storage.
-func Open(path string, mode os.FileMode, options *bbolt.Options, bucket []byte) (Storage, error) {
+func Open(path string, mode os.FileMode, options *bbolt.Options, bucket []byte) (*Storage, error) {
 	if bucket == nil {
 		bucket = []byte("github")
 	}
 	db, err := bbolt.Open(path, mode, options)
 	if err != nil {
-		return Storage{}, err
+		return &Storage{}, err
 	}
 	if err := db.Update(func(tx *bbolt.Tx) error {
 		_, err := tx.CreateBucketIfNotExists(bucket)
 		return err
 	}); err != nil {
-		return Storage{}, err
+		return &Storage{}, err
 	}
-	return Storage{DB: db, Bucket: bucket}, nil
+	return &Storage{DB: db, Bucket: bucket}, nil
 }
 
 // MustOpen is a wrapper around Open that panics if an error occurs.
-func MustOpen(path string, mode os.FileMode, options *bbolt.Options, bucket []byte) Storage {
+func MustOpen(path string, mode os.FileMode, options *bbolt.Options, bucket []byte) *Storage {
 	s, err := Open(path, mode, options, bucket)
 	if err != nil {
 		panic(err)
