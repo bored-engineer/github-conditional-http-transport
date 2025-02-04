@@ -1,4 +1,4 @@
-package bbolt
+package bboltstorage
 
 import (
 	"bytes"
