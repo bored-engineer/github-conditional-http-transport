@@ -21,8 +21,7 @@ import (
 
 // Key generates the S3 key from the URL.
 var Key = func(u url.URL) string {
-	u.Scheme = ""
-	return u.String()
+	return strings.TrimPrefix(u.String(), "https://")
 }
 
 // Storage implements the ghtransport.Storage interface backed by AWS S3.
