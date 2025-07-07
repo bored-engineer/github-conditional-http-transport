@@ -1,10 +1,12 @@
 package bboltstorage
 
 import (
+	"bufio"
 	"bytes"
 	"context"
-	"io"
+	"fmt"
 	"net/http"
+	"net/http/httputil"
 	"net/url"
 	"os"
 
@@ -17,34 +19,51 @@ type Storage struct {
 	Bucket []byte
 }
 
-func (s *Storage) Get(ctx context.Context, u *url.URL) (body io.ReadCloser, header http.Header, err error) {
+func (s *Storage) Get(ctx context.Context, u *url.URL) (*http.Response, error) {
+	var bodyBytes []byte
 	if err := s.DB.View(func(tx *bbolt.Tx) error {
 		bucket := tx.Bucket(s.Bucket)
 		if bucket == nil {
 			return bbolt.ErrBucketNotFound
 		}
-		bodyBytes := bucket.Get([]byte(u.String()))
-		if bodyBytes == nil {
+		bodyBytesUnsafe := bucket.Get([]byte(u.String()))
+		if bodyBytesUnsafe == nil {
 			return nil
 		}
-		bodyBytesSafe := make([]byte, len(bodyBytes))
-		copy(bodyBytesSafe, bodyBytes)
-		body = io.NopCloser(bytes.NewReader(bodyBytesSafe))
+		bodyBytes = make([]byte, len(bodyBytesUnsafe))
+		copy(bodyBytes, bodyBytesUnsafe)
 		return nil
 	}); err != nil {
-		return nil, nil, err
+		return nil, fmt.Errorf("(*bbolt.DB).View failed: %w", err)
 	}
-	return
+	if bodyBytes == nil {
+		return nil, nil
+	}
+	resp, err := http.ReadResponse(bufio.NewReader(bytes.NewReader(bodyBytes)), nil)
+	if err != nil {
+		return nil, fmt.Errorf("http.ReadResponse failed: %w", err)
+	}
+	return resp, nil
 }
 
-func (s *Storage) Put(ctx context.Context, u *url.URL, body []byte, header http.Header) (err error) {
-	return s.DB.Update(func(tx *bbolt.Tx) error {
+func (s *Storage) Put(ctx context.Context, u *url.URL, resp *http.Response) error {
+	b, err := httputil.DumpResponse(resp, true)
+	if err != nil {
+		return fmt.Errorf("httputil.DumpResponse failed: %w", err)
+	}
+	if err := s.DB.Update(func(tx *bbolt.Tx) error {
 		bucket := tx.Bucket(s.Bucket)
 		if bucket == nil {
 			return bbolt.ErrBucketNotFound
 		}
-		return bucket.Put([]byte(u.String()), body)
-	})
+		if err := bucket.Put([]byte(u.String()), b); err != nil {
+			return fmt.Errorf("(*bbolt.Bucket).Put failed: %w", err)
+		}
+		return nil
+	}); err != nil {
+		return fmt.Errorf("(*bbolt.DB).Update failed: %w", err)
+	}
+	return nil
 }
 
 // Open is a wrapper around bbolt.Open that returns an initialized Storage.
@@ -54,13 +73,15 @@ func Open(path string, mode os.FileMode, options *bbolt.Options, bucket []byte) 
 	}
 	db, err := bbolt.Open(path, mode, options)
 	if err != nil {
-		return &Storage{}, err
+		return &Storage{}, fmt.Errorf("bbolt.Open failed: %w", err)
 	}
 	if err := db.Update(func(tx *bbolt.Tx) error {
-		_, err := tx.CreateBucketIfNotExists(bucket)
-		return err
+		if _, err := tx.CreateBucketIfNotExists(bucket); err != nil {
+			return fmt.Errorf("(*bbolt.Tx).CreateBucketIfNotExists failed: %w", err)
+		}
+		return nil
 	}); err != nil {
-		return &Storage{}, err
+		return &Storage{}, fmt.Errorf("(*bbolt.DB).Update failed: %w", err)
 	}
 	return &Storage{DB: db, Bucket: bucket}, nil
 }

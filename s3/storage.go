@@ -1,13 +1,9 @@
 package s3storage
 
 import (
-	"bytes"
 	"context"
-	"crypto/md5"
-	"encoding/base64"
 	"errors"
 	"fmt"
-	"io"
 	"net/http"
 	"net/url"
 	"path"
@@ -31,7 +27,7 @@ type Storage struct {
 	Prefix string
 }
 
-func (s *Storage) Get(ctx context.Context, u *url.URL) (body io.ReadCloser, header http.Header, err error) {
+func (s *Storage) Get(ctx context.Context, u *url.URL) (*http.Response, error) {
 	out, err := s.Client.GetObject(ctx, &s3.GetObjectInput{
 		Bucket: aws.String(s.Bucket),
 		Key:    aws.String(path.Join(s.Prefix, Key(*u))),
@@ -39,54 +35,60 @@ func (s *Storage) Get(ctx context.Context, u *url.URL) (body io.ReadCloser, head
 	if err != nil {
 		var nsk *types.NoSuchKey
 		if errors.As(err, &nsk) {
-			return nil, nil, nil
+			return nil, nil
 		}
-		return nil, nil, err
+		return nil, fmt.Errorf("(*s3.Client).GetObject failed: %w", err)
 	}
 	headers := make(http.Header, len(out.Metadata))
 	for k, v := range out.Metadata {
 		headers.Set(k, v)
 	}
-	if out.CacheControl != nil {
-		headers.Set("Cache-Control", aws.ToString(out.CacheControl))
+	if value := aws.ToString(out.CacheControl); len(value) > 0 {
+		headers.Set("Cache-Control", value)
 	}
-	if out.ContentDisposition != nil {
-		headers.Set("Content-Disposition", aws.ToString(out.ContentDisposition))
+	if value := aws.ToString(out.ContentDisposition); len(value) > 0 {
+		headers.Set("Content-Disposition", value)
 	}
-	if out.ContentEncoding != nil {
-		headers.Set("Content-Encoding", aws.ToString(out.ContentEncoding))
+	if value := aws.ToString(out.ContentEncoding); len(value) > 0 {
+		headers.Set("Content-Encoding", value)
 	}
-	if out.ContentLanguage != nil {
-		headers.Set("Content-Language", aws.ToString(out.ContentLanguage))
+	if value := aws.ToString(out.ContentLanguage); len(value) > 0 {
+		headers.Set("Content-Language", value)
 	}
-	if out.ContentType != nil {
-		headers.Set("Content-Type", aws.ToString(out.ContentType))
+	if value := aws.ToString(out.ContentType); len(value) > 0 {
+		headers.Set("Content-Type", value)
 	}
-	return out.Body, headers, nil
+	return &http.Response{
+		Status:        http.StatusText(http.StatusOK),
+		StatusCode:    http.StatusOK,
+		Header:        headers,
+		Body:          out.Body,
+		ContentLength: aws.ToInt64(out.ContentLength),
+	}, nil
 }
 
-func (s *Storage) Put(ctx context.Context, u *url.URL, body []byte, header http.Header) (err error) {
-	checksum := md5.Sum(body)
+func (s *Storage) Put(ctx context.Context, u *url.URL, resp *http.Response) error {
 	input := &s3.PutObjectInput{
 		Bucket:        aws.String(s.Bucket),
 		Key:           aws.String(path.Join(s.Prefix, Key(*u))),
-		Body:          bytes.NewReader(body),
-		ContentLength: aws.Int64(int64(len(body))),
-		ContentMD5:    aws.String(base64.StdEncoding.EncodeToString(checksum[:])),
+		Body:          resp.Body,
+		ContentLength: aws.Int64(resp.ContentLength),
+		// ContentMD5:    aws.String(base64.StdEncoding.EncodeToString(checksum[:])),
 	}
-	metadata := make(map[string]string, len(header))
-	for key, vals := range header {
+	metadata := make(map[string]string, len(resp.Header))
+	for key, vals := range resp.Header {
+		val := strings.Join(vals, ",")
 		switch key {
 		case "Cache-Control":
-			input.CacheControl = aws.String(vals[0])
+			input.CacheControl = aws.String(val)
 		case "Content-Disposition":
-			input.ContentDisposition = aws.String(vals[0])
+			input.ContentDisposition = aws.String(val)
 		case "Content-Encoding":
-			input.ContentEncoding = aws.String(vals[0])
+			input.ContentEncoding = aws.String(val)
 		case "Content-Language":
-			input.ContentLanguage = aws.String(vals[0])
+			input.ContentLanguage = aws.String(val)
 		case "Content-Type":
-			input.ContentType = aws.String(vals[0])
+			input.ContentType = aws.String(val)
 		case "Access-Control-Allow-Origin",
 			"Access-Control-Expose-Headers",
 			"Content-Security-Policy",
@@ -103,11 +105,13 @@ func (s *Storage) Put(ctx context.Context, u *url.URL, body []byte, header http.
 			"X-Xss-Protection":
 			// Drop these headers, they're just noise.
 		default:
-			metadata[key] = strings.Join(vals, ",")
+			metadata[key] = val
 		}
 	}
-	_, err = s.Client.PutObject(ctx, input)
-	return err
+	if _, err := s.Client.PutObject(ctx, input); err != nil {
+		return fmt.Errorf("(*s3.Client).PutObject failed: %w", err)
+	}
+	return nil
 }
 
 // New returns a new Storage for the given bucket and (optional) prefix.
