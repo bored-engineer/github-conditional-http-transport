@@ -97,7 +97,9 @@ func (t *transport) RoundTrip(req *http.Request) (*http.Response, error) {
 	// Perform the upstream request
 	resp, err := t.parent.RoundTrip(req)
 	if err != nil {
-		cachedResp.Body.Close()
+		if cachedResp != nil {
+			cachedResp.Body.Close()
+		}
 		return nil, err
 	}
 
