@@ -175,7 +175,7 @@ func (t *transport) cacheResponse(req *http.Request, resp *http.Response) (*http
 	cacheResp.Header = maps.Clone(resp.Header)
 
 	// Similar to httpcache, inject fake X-Varied-<header> "response" headers
-	for _, header := range parseCommaSepHeader(req.Header, "Vary") {
+	for _, header := range parseCommaSepHeader(resp.Header, "Vary") {
 		header = http.CanonicalHeaderKey(header)
 		if vals := req.Header.Values(header); len(vals) > 0 {
 			if header == "Authorization" {
