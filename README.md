@@ -124,7 +124,7 @@ HTTP/1.1 200 OK
 993db4dbff350f7d8d5a92c3926fdab6311ff93963bc237343f07302c3ee3335  /dev/stdin
 ```
 
-In both of the examples, the `User-Agent` is set to `Go-http-client/1.1` because the GitHub REST API will pretty-print the response JSON if the `User-Agent` contains "curl". However this happens _after_ the `ETag` has been calculated, corrupting the checksum/demos.
+In both of the examples, the `User-Agent` is set to `Go-http-client/1.1` because the GitHub REST API will pretty-print the response JSON if the `User-Agent` contains "curl", "Wget", "Safari" or "Firefox". However this happens _after_ the `ETag` has been calculated, corrupting the checksum/demos.
 
 ## Putting it all together
 Using this reverse-engineered `ETag` algorithm, we can develop a [http.RoundTripper](https://pkg.go.dev/net/http#RoundTripper) that allows a GitHub REST API response that was cached/returned for a _different_ `Authorization` header to be safely reused. The logic for handling a HTTP request is roughly:
