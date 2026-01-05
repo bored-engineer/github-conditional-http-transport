@@ -135,6 +135,10 @@ func (t *transport) RoundTrip(req *http.Request) (*http.Response, error) {
 				if strings.HasPrefix(key, "X-Varied-") {
 					continue // Skip the X-Varied-* headers, they are "internal" to the cache
 				}
+				if key == "X-Github-Request-Id" {
+					// Return the original Request-Id header as well
+					resp.Header["X-Cached-Request-Id"] = vals
+				}
 				if _, ok := resp.Header[key]; !ok {
 					resp.Header[key] = vals
 				}
