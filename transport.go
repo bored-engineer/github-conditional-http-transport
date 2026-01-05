@@ -10,6 +10,15 @@ import (
 	"strings"
 )
 
+// Responses from the GitHub REST API are pretty-printed if the User-Agent contains "curl", "Wget", "Safari" or "Firefox".
+// This breaks the ETag calculation, so we need to replace the User-Agent with a "fake" User-Agent that doesn't contain these strings.
+var uaReplacer = strings.NewReplacer(
+	"curl", "cUrL",
+	"Wget", "wGeT",
+	"Safari", "sAfArI",
+	"Firefox", "fIrEfOx",
+)
+
 // cacheable determines if the request is potentially cacheable.
 func cacheable(req *http.Request) bool {
 	if req.Method != "GET" && req.Method != "HEAD" {
@@ -86,6 +95,11 @@ func (t *transport) RoundTrip(req *http.Request) (*http.Response, error) {
 	// If the request is not cacheable, just pass it through to the parent RoundTripper
 	if !cacheable(req) {
 		return t.parent.RoundTrip(req)
+	}
+
+	// If there is a User-Agent, ensure it's compatible
+	if ua := req.Header.Get("User-Agent"); ua != "" {
+		req.Header.Set("User-Agent", uaReplacer.Replace(ua))
 	}
 
 	// Attempt to fetch from storage and inject the cache headers to the request
