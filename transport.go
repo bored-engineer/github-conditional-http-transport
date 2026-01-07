@@ -27,6 +27,9 @@ func cacheable(req *http.Request) bool {
 	if req.Header.Get("Range") != "" {
 		return false
 	}
+	if req.URL.Path == "/rate_limit" || req.URL.Path == "/api/v3/rate_limit" {
+		return false
+	}
 	return true
 }
 
