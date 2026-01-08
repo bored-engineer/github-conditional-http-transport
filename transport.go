@@ -75,7 +75,7 @@ func (t *transport) injectCacheHeaders(req *http.Request) (resp *http.Response, 
 	var buf bytes.Buffer
 
 	// Calculate the _expected_ ETag from the _input_ headers but the cached body
-	h := Hash(req.Header)
+	h := Hash(req.Header, parseCommaSepHeader(resp.Header, "Vary"))
 	if _, err := io.Copy(io.MultiWriter(&buf, h), resp.Body); err != nil {
 		return nil, fmt.Errorf("(*http.Response).Body.Read failed: %w", err)
 	}

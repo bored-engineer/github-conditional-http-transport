@@ -13,16 +13,19 @@ func TestHash(t *testing.T) {
 		Headers  http.Header
 		Body     string
 		Expected string
+		Vary     []string
 	}{
-		"emptyall": {
+		"empty_all": {
 			Headers:  http.Header{},
 			Body:     "",
 			Expected: "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+			Vary:     nil,
 		},
-		"emptyheaders": {
+		"empty_headers": {
 			Headers:  http.Header{},
 			Body:     testBody,
 			Expected: "c5542e3ee32c0adf1128a79d80a296d03412415c924e522d9d1c75b17d7c3ef0",
+			Vary:     nil,
 		},
 		"accept": {
 			Headers: http.Header{
@@ -30,14 +33,33 @@ func TestHash(t *testing.T) {
 			},
 			Body:     testBody,
 			Expected: "125f46f7d22cd8f41ea1534256ba85a45f4a0e3dcf995da9fecfe3361b93407d",
+			Vary:     nil,
+		},
+		"vary_none": {
+			Headers: http.Header{
+				"Accept":        []string{"application/vnd.github.v3+json"},
+				"Authorization": []string{"Bearer hunter2"},
+			},
+			Body:     testBody,
+			Expected: "125f46f7d22cd8f41ea1534256ba85a45f4a0e3dcf995da9fecfe3361b93407d",
+			Vary:     []string{"Accept"},
+		},
+		"vary_authorization": {
+			Headers: http.Header{
+				"Accept":        []string{"application/vnd.github.v3+json"},
+				"Authorization": []string{"Bearer hunter2"},
+			},
+			Body:     testBody,
+			Expected: "2c3b29a72c9c09135a89fe51c46613393b445efabdf6f02105dc1561237093a4",
+			Vary:     []string{"Accept", "Authorization"},
 		},
 	}
 	for name, test := range tests {
 		t.Run(name, func(t *testing.T) {
-			h := Hash(test.Headers)
+			h := Hash(test.Headers, test.Vary)
 			h.Write([]byte(test.Body))
 			if got := hex.EncodeToString(h.Sum(nil)); got != test.Expected {
-				t.Errorf("Hash(%v, %q) = %x, want %x", test.Headers, test.Body, got, test.Expected)
+				t.Errorf("Hash(%v, %q) = %q, want %q", test.Headers, test.Body, got, test.Expected)
 			}
 		})
 	}

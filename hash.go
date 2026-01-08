@@ -6,6 +6,7 @@ import (
 	"encoding/base64"
 	"hash"
 	"net/http"
+	"slices"
 	"strings"
 )
 
@@ -18,11 +19,13 @@ var VaryHeaders = []string{
 
 // Hash initializes a hash.Hash following the GitHub's internal ETag implementation.
 // The response body must be written to the hash before it can be used to calculate the ETag.
-func Hash(requestHeaders http.Header) hash.Hash {
+func Hash(requestHeaders http.Header, vary []string) hash.Hash {
 	h := sha256.New()
 	for _, headerName := range VaryHeaders {
-		for _, headerValue := range requestHeaders.Values(headerName) {
-			h.Write(append([]byte(headerValue), ':'))
+		if vary == nil || slices.Contains(vary, headerName) {
+			for _, headerValue := range requestHeaders.Values(headerName) {
+				h.Write(append([]byte(headerValue), ':'))
+			}
 		}
 	}
 	return h
