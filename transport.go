@@ -31,8 +31,8 @@ func (t *transport) RoundTrip(req *http.Request) (resp *http.Response, _ error) 
 	defer func() {
 		// If we did not utilize the cached response, ensure it is consumed and closed
 		if cached != nil && cached.Body != nil && resp.Body != cached.Body {
-			_, _ = io.Copy(io.Discard, resp.Body)
-			_ = resp.Body.Close()
+			_, _ = io.Copy(io.Discard, cached.Body)
+			_ = cached.Body.Close()
 		}
 	}()
 
