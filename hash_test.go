@@ -82,6 +82,10 @@ func TestHashToken(t *testing.T) {
 			Authorization: "Basic Ym9yZWQtZW5naW5lZXI6aHVudGVyMg==",
 			Expected:      "9S+9MrKzuG/4jvbEkGKChfSCrxXdyylUH5S89Saj9sc=",
 		},
+		"token": {
+			Authorization: "token hunter2",
+			Expected:      "9S+9MrKzuG/4jvbEkGKChfSCrxXdyylUH5S89Saj9sc=",
+		},
 	}
 	for name, test := range tests {
 		t.Run(name, func(t *testing.T) {

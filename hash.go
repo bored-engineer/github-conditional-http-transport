@@ -48,6 +48,10 @@ func HashToken(authorization string) string {
 			}
 		}
 	}
+	// This is also supported but not very common
+	if bearer, ok := strings.CutPrefix(authorization, "token "); ok && bearer != "" {
+		token = bearer
+	}
 	hashed := sha256.Sum256([]byte(token))
 	return base64.StdEncoding.EncodeToString(hashed[:])
 }
