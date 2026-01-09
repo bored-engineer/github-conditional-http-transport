@@ -1,3 +1,3 @@
 module github.com/bored-engineer/github-conditional-http-transport
 
-go 1.23.5
+go 1.24

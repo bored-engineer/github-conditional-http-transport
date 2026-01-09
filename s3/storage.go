@@ -1,9 +1,13 @@
 package s3storage
 
 import (
+	"bytes"
 	"context"
+	"crypto/md5"
+	"encoding/base64"
 	"errors"
 	"fmt"
+	"io"
 	"net/http"
 	"net/url"
 	"path"
@@ -68,12 +72,28 @@ func (s *Storage) Get(ctx context.Context, u *url.URL) (*http.Response, error) {
 }
 
 func (s *Storage) Put(ctx context.Context, u *url.URL, resp *http.Response) error {
+	// Read the response body into memory
+	var buf bytes.Buffer
+	if _, err := buf.ReadFrom(resp.Body); err != nil {
+		return fmt.Errorf("(*bytes.Buffer).ReadFrom failed: %w", err)
+	}
+	if resp.ContentLength > 0 {
+		buf.Grow(int(resp.ContentLength))
+	}
+
+	// Restore the response body
+	resp.Body = io.NopCloser(bytes.NewReader(buf.Bytes()))
+	resp.ContentLength = int64(buf.Len())
+
+	// Calculate the Content-MD5 checksum
+	checksum := md5.Sum(buf.Bytes())
+
 	input := &s3.PutObjectInput{
 		Bucket:        aws.String(s.Bucket),
 		Key:           aws.String(path.Join(s.Prefix, Key(*u))),
-		Body:          resp.Body,
-		ContentLength: aws.Int64(resp.ContentLength),
-		// ContentMD5:    aws.String(base64.StdEncoding.EncodeToString(checksum[:])),
+		Body:          &buf,
+		ContentLength: aws.Int64(int64(buf.Len())),
+		ContentMD5:    aws.String(base64.StdEncoding.EncodeToString(checksum[:])),
 	}
 	metadata := make(map[string]string, len(resp.Header))
 	for key, vals := range resp.Header {

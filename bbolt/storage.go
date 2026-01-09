@@ -11,6 +11,7 @@ import (
 	"os"
 
 	"go.etcd.io/bbolt"
+	"go.etcd.io/bbolt/errors"
 )
 
 // Implements the ghtransport.Storage interface using go.etcd.io/bbolt.
@@ -24,7 +25,7 @@ func (s *Storage) Get(ctx context.Context, u *url.URL) (*http.Response, error) {
 	if err := s.DB.View(func(tx *bbolt.Tx) error {
 		bucket := tx.Bucket(s.Bucket)
 		if bucket == nil {
-			return bbolt.ErrBucketNotFound
+			return errors.ErrBucketNotFound
 		}
 		bodyBytesUnsafe := bucket.Get([]byte(u.String()))
 		if bodyBytesUnsafe == nil {
