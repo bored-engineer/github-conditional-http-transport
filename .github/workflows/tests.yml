@@ -1,0 +1,32 @@
+name: Tests
+
+on:
+  push:
+    branches: [ main ]
+  pull_request:
+    branches: [ main ]
+
+jobs:
+  tests:
+    name: "${{ matrix.module == '.' && 'core' || matrix.module }}"
+    runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        module:
+          - .
+          - bbolt
+          - pebble
+          - s3
+          - e2e
+    
+    steps:
+      - uses: actions/checkout@v6
+      
+      - name: Set up Go
+        uses: actions/setup-go@v6
+        with:
+          go-version-file: '${{ matrix.module }}/go.mod'
+      
+      - name: Run tests
+        working-directory: ${{ matrix.module }}
+        run: go test -v ./...
