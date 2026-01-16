@@ -13,6 +13,7 @@ import (
 	"strings"
 
 	"github.com/aws/aws-sdk-go-v2/aws"
+	v4 "github.com/aws/aws-sdk-go-v2/aws/signer/v4"
 	"github.com/aws/aws-sdk-go-v2/config"
 	"github.com/aws/aws-sdk-go-v2/service/s3"
 	"github.com/aws/aws-sdk-go-v2/service/s3/types"
@@ -93,8 +94,8 @@ func (s *Storage) Put(ctx context.Context, resp *http.Response) error {
 		Body:          &buf,
 		ContentLength: aws.Int64(int64(buf.Len())),
 		ContentMD5:    aws.String(base64.StdEncoding.EncodeToString(checksum[:])),
+		Metadata:      make(map[string]string, len(resp.Header)),
 	}
-	metadata := make(map[string]string, len(resp.Header))
 	for key, vals := range resp.Header {
 		val := strings.Join(vals, ",")
 		switch key {
@@ -124,10 +125,12 @@ func (s *Storage) Put(ctx context.Context, resp *http.Response) error {
 			"X-Xss-Protection":
 			// Drop these headers, they're just noise.
 		default:
-			metadata[key] = val
+			input.Metadata[key] = val
 		}
 	}
-	if _, err := s.Client.PutObject(ctx, input); err != nil {
+	if _, err := s.Client.PutObject(ctx, input, s3.WithAPIOptions(
+		v4.SwapComputePayloadSHA256ForUnsignedPayloadMiddleware,
+	)); err != nil {
 		return fmt.Errorf("(*s3.Client).PutObject failed: %w", err)
 	}
 	return nil
