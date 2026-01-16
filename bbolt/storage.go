@@ -7,7 +7,6 @@ import (
 	"fmt"
 	"net/http"
 	"net/http/httputil"
-	"net/url"
 	"os"
 
 	"go.etcd.io/bbolt"
@@ -20,14 +19,14 @@ type Storage struct {
 	Bucket []byte
 }
 
-func (s *Storage) Get(ctx context.Context, u *url.URL) (*http.Response, error) {
+func (s *Storage) Get(ctx context.Context, req *http.Request) (*http.Response, error) {
 	var bodyBytes []byte
 	if err := s.DB.View(func(tx *bbolt.Tx) error {
 		bucket := tx.Bucket(s.Bucket)
 		if bucket == nil {
 			return errors.ErrBucketNotFound
 		}
-		bodyBytesUnsafe := bucket.Get([]byte(u.String()))
+		bodyBytesUnsafe := bucket.Get([]byte(req.URL.String()))
 		if bodyBytesUnsafe == nil {
 			return nil
 		}
@@ -47,7 +46,7 @@ func (s *Storage) Get(ctx context.Context, u *url.URL) (*http.Response, error) {
 	return resp, nil
 }
 
-func (s *Storage) Put(ctx context.Context, u *url.URL, resp *http.Response) error {
+func (s *Storage) Put(ctx context.Context, resp *http.Response) error {
 	b, err := httputil.DumpResponse(resp, true)
 	if err != nil {
 		return fmt.Errorf("httputil.DumpResponse failed: %w", err)
@@ -57,7 +56,7 @@ func (s *Storage) Put(ctx context.Context, u *url.URL, resp *http.Response) erro
 		if bucket == nil {
 			return errors.ErrBucketNotFound
 		}
-		if err := bucket.Put([]byte(u.String()), b); err != nil {
+		if err := bucket.Put([]byte(resp.Request.URL.String()), b); err != nil {
 			return fmt.Errorf("(*bbolt.Bucket).Put failed: %w", err)
 		}
 		return nil

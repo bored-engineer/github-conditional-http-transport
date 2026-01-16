@@ -9,7 +9,6 @@ import (
 	"fmt"
 	"io"
 	"net/http"
-	"net/url"
 	"path"
 	"strings"
 
@@ -20,8 +19,8 @@ import (
 )
 
 // Key generates the S3 key from the URL.
-var Key = func(u url.URL) string {
-	return strings.TrimPrefix(u.String(), "https://")
+var Key = func(req *http.Request) string {
+	return strings.TrimPrefix(req.URL.String(), "https://")
 }
 
 // Storage implements the ghtransport.Storage interface backed by AWS S3.
@@ -31,10 +30,10 @@ type Storage struct {
 	Prefix string
 }
 
-func (s *Storage) Get(ctx context.Context, u *url.URL) (*http.Response, error) {
+func (s *Storage) Get(ctx context.Context, req *http.Request) (*http.Response, error) {
 	out, err := s.Client.GetObject(ctx, &s3.GetObjectInput{
 		Bucket: aws.String(s.Bucket),
-		Key:    aws.String(path.Join(s.Prefix, Key(*u))),
+		Key:    aws.String(path.Join(s.Prefix, Key(req))),
 	})
 	if err != nil {
 		var nsk *types.NoSuchKey
@@ -71,7 +70,7 @@ func (s *Storage) Get(ctx context.Context, u *url.URL) (*http.Response, error) {
 	}, nil
 }
 
-func (s *Storage) Put(ctx context.Context, u *url.URL, resp *http.Response) error {
+func (s *Storage) Put(ctx context.Context, resp *http.Response) error {
 	// Read the response body into memory
 	var buf bytes.Buffer
 	if _, err := buf.ReadFrom(resp.Body); err != nil {
@@ -90,7 +89,7 @@ func (s *Storage) Put(ctx context.Context, u *url.URL, resp *http.Response) erro
 
 	input := &s3.PutObjectInput{
 		Bucket:        aws.String(s.Bucket),
-		Key:           aws.String(path.Join(s.Prefix, Key(*u))),
+		Key:           aws.String(path.Join(s.Prefix, Key(resp.Request))),
 		Body:          &buf,
 		ContentLength: aws.Int64(int64(buf.Len())),
 		ContentMD5:    aws.String(base64.StdEncoding.EncodeToString(checksum[:])),

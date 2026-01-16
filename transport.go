@@ -24,7 +24,7 @@ func (t *transport) RoundTrip(req *http.Request) (resp *http.Response, _ error) 
 	}
 
 	// Attempt to fetch from storage
-	cached, err := t.storage.Get(req.Context(), req.URL)
+	cached, err := t.storage.Get(req.Context(), req)
 	if err != nil {
 		return nil, fmt.Errorf("(Storage).Get failed: %w", err)
 	}
@@ -102,7 +102,7 @@ func (t *transport) RoundTrip(req *http.Request) (resp *http.Response, _ error) 
 
 		// Store the cached response body as bytes
 		// Per the storage contract, they will restore the Body/ContentLength after consumption
-		if err := t.storage.Put(req.Context(), req.URL, &cacheResp); err != nil {
+		if err := t.storage.Put(req.Context(), &cacheResp); err != nil {
 			return resp, fmt.Errorf("(Storage).Put failed: %w", err)
 		}
 

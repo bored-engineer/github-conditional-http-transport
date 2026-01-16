@@ -7,7 +7,6 @@ import (
 	"fmt"
 	"net/http"
 	"net/http/httputil"
-	"net/url"
 	"sync"
 )
 
@@ -16,8 +15,8 @@ type Storage struct {
 	Map sync.Map
 }
 
-func (s *Storage) Get(ctx context.Context, u *url.URL) (*http.Response, error) {
-	value, ok := s.Map.Load(u.String())
+func (s *Storage) Get(ctx context.Context, req *http.Request) (*http.Response, error) {
+	value, ok := s.Map.Load(req.URL.String())
 	if !ok {
 		return nil, nil
 	}
@@ -32,12 +31,12 @@ func (s *Storage) Get(ctx context.Context, u *url.URL) (*http.Response, error) {
 	return resp, nil
 }
 
-func (s *Storage) Put(ctx context.Context, u *url.URL, resp *http.Response) error {
+func (s *Storage) Put(ctx context.Context, resp *http.Response) error {
 	value, err := httputil.DumpResponse(resp, true)
 	if err != nil {
 		return fmt.Errorf("httputil.DumpResponse failed: %w", err)
 	}
-	s.Map.Store(u.String(), value)
+	s.Map.Store(resp.Request.URL.String(), value)
 	return nil
 }
 

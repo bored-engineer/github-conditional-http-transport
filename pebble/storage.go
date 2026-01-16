@@ -7,7 +7,6 @@ import (
 	"fmt"
 	"net/http"
 	"net/http/httputil"
-	"net/url"
 
 	"github.com/cockroachdb/pebble/v2"
 )
@@ -18,8 +17,8 @@ type Storage struct {
 	WriteOptions *pebble.WriteOptions
 }
 
-func (s *Storage) Get(ctx context.Context, u *url.URL) (_ *http.Response, rerr error) {
-	key := []byte(u.String())
+func (s *Storage) Get(ctx context.Context, req *http.Request) (_ *http.Response, rerr error) {
+	key := []byte(req.URL.String())
 	value, closer, err := s.DB.Get(key)
 	if err == pebble.ErrNotFound {
 		return nil, nil
@@ -33,7 +32,7 @@ func (s *Storage) Get(ctx context.Context, u *url.URL) (_ *http.Response, rerr e
 		}
 	}()
 
-	// Make a copy of the value since it's only valid until closer.Close()
+	// Make a copy of the value since it's only valid until closer.Close() is called
 	bodyBytes := make([]byte, len(value))
 	copy(bodyBytes, value)
 
@@ -44,12 +43,12 @@ func (s *Storage) Get(ctx context.Context, u *url.URL) (_ *http.Response, rerr e
 	return resp, nil
 }
 
-func (s *Storage) Put(ctx context.Context, u *url.URL, resp *http.Response) error {
+func (s *Storage) Put(ctx context.Context, resp *http.Response) error {
 	b, err := httputil.DumpResponse(resp, true)
 	if err != nil {
 		return fmt.Errorf("httputil.DumpResponse failed: %w", err)
 	}
-	key := []byte(u.String())
+	key := []byte(resp.Request.URL.String())
 	if err := s.DB.Set(key, b, s.WriteOptions); err != nil {
 		return fmt.Errorf("(*pebble.DB).Set failed: %w", err)
 	}
