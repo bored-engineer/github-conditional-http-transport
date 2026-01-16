@@ -74,7 +74,7 @@ jobs:
           REDIS_URL: 127.0.0.1:6379
       
       - name: Run tests (e2e)
-        working-directory: e2e
+        working-directory: internal/e2e
         run: go test -v ./...
         env:
           GH_TOKEN_ALPHA: ${{ secrets.GH_TOKEN_ALPHA }}
