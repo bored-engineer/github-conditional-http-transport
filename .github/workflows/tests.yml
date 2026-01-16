@@ -12,21 +12,69 @@ on:
     - cron: '0 0 * * *'
 
 jobs:
-  e2e:
-    name: E2E
+  tests:
+    name: "Tests"
     runs-on: ubuntu-latest
+
+    services:
+      redis:
+        image: redis@sha256:73dad4271642c5966db88db7a7585fae7cf10b685d1e48006f31e0294c29fdd7
+        ports:
+          - 6379:6379
+        options: >-
+          --health-cmd "redis-cli ping"
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+      s3mock:
+        image: adobe/s3mock@sha256:cd49108c0094bc3f420b24bff354073032a9ec1a6f4cc89f8e8f483a308cf99e
+        ports:
+          - 9090:9090
+        options: >-
+          --health-cmd "nc -z 127.0.0.1 9090"
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+
     steps:
       - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
       
       - name: Set up Go
         uses: actions/setup-go@7a3fe6cf4cb3a834922a1244abfce67bcef6a0c5 # v6.2.0
         with:
-          go-version-file: 'e2e/go.mod'
-          cache-dependency-path: 'e2e/go.sum'
+          go-version-file: 'go.mod'
+          cache-dependency-path: '**/go.sum'
       
-      - name: Run tests
+      - name: Run tests (core)
+        working-directory: .
+        run: go test -v ./...
+      
+      - name: Run tests (bbolt)
+        working-directory: bbolt
+        run: go test -v ./...
+      
+      - name: Run tests (pebble)
+        working-directory: pebble
+        run: go test -v ./...
+      
+      - name: Run tests (s3)
+        working-directory: s3
+        run: go test -v ./...
+        env:
+          AWS_ENDPOINT_URL_S3: http://127.0.0.1:9090
+          AWS_ACCESS_KEY_ID: s3mock
+          AWS_SECRET_ACCESS_KEY: s3mock
+          S3_BUCKET_NAME: generate
+      
+      - name: Run tests (redis)
+        working-directory: redis
+        run: go test -v ./...
+        env:
+          REDIS_URL: http://127.0.0.1:6379
+      
+      - name: Run tests (e2e)
         working-directory: e2e
-        run: go test -v .
+        run: go test -v ./...
         env:
           GH_TOKEN_ALPHA: ${{ secrets.GH_TOKEN_ALPHA }}
           GH_TOKEN_BETA: ${{ secrets.GH_TOKEN_BETA }}
@@ -46,20 +94,3 @@ jobs:
           GH_OAUTH_BETA_CLIENT_SECRET: ${{ secrets.GH_OAUTH_BETA_CLIENT_SECRET }}
           GH_OAUTH_GAMMA_CLIENT_ID: ${{ vars.GH_OAUTH_GAMMA_CLIENT_ID }}
           GH_OAUTH_GAMMA_CLIENT_SECRET: ${{ secrets.GH_OAUTH_GAMMA_CLIENT_SECRET }}
-
-  tests:
-    name: "Tests"
-    runs-on: ubuntu-latest
-
-    steps:
-      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
-      
-      - name: Set up Go
-        uses: actions/setup-go@7a3fe6cf4cb3a834922a1244abfce67bcef6a0c5 # v6.2.0
-        with:
-          go-version-file: 'go.mod'
-          cache-dependency-path: '**/go.sum'
-      
-      - name: Run tests
-        run: |
-          find . -name go.mod -print0 | xargs -0 dirname | xargs -I {} go -C {} test -v ./...
