@@ -62,6 +62,7 @@ jobs:
         run: go test -v ./...
         env:
           AWS_ENDPOINT_URL_S3: http://127.0.0.1:9090
+          AWS_REGION: us-east-1
           AWS_ACCESS_KEY_ID: s3mock
           AWS_SECRET_ACCESS_KEY: s3mock
           S3_BUCKET_NAME: generate
