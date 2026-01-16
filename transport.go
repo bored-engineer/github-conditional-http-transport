@@ -81,10 +81,17 @@ func (t *transport) RoundTrip(req *http.Request) (resp *http.Response, _ error) 
 		// Copy the body and status from the cache
 		resp.StatusCode = cached.StatusCode
 		resp.Status = cached.Status
-		resp.Body = cached.Body
-		resp.ContentLength = cached.ContentLength
 
-	} else if resp.StatusCode == http.StatusOK && resp.Header.Get("Etag") != "" {
+		// As a special case, if the request is a HEAD, we return an empty body
+		if req.Method == http.MethodHead {
+			resp.Body = io.NopCloser(strings.NewReader(""))
+			resp.ContentLength = 0
+		} else {
+			resp.Body = cached.Body
+			resp.ContentLength = cached.ContentLength
+		}
+
+	} else if resp.StatusCode == http.StatusOK && req.Method == http.MethodGet && resp.Header.Get("Etag") != "" {
 		// Make a shallow copy of the *http.Response as we're going to modify the headers for storage
 		cacheResp := *resp
 		cacheResp.Header = maps.Clone(resp.Header)
