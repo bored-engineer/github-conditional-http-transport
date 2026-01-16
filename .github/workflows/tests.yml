@@ -1,24 +1,63 @@
 name: Tests
 
 on:
+  # Run for every direct push to main
   push:
     branches: [ main ]
+  # Run for every PR targeting main
   pull_request:
     branches: [ main ]
+  # Run daily to see if GitHub has changed the ETag algorithm
+  schedule:
+    - cron: '0 0 * * *'
 
 jobs:
-  tests:
+  e2e:
+    name: E2E
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v6
+      
+      - name: Set up Go
+        uses: actions/setup-go@v6
+        with:
+          go-version-file: 'e2e/go.mod'
+      
+      - name: Run tests
+        working-directory: e2e
+        run: go test -v .
+        env:
+          GH_TOKEN_ALPHA: ${{ secrets.GH_TOKEN_ALPHA }}
+          GH_TOKEN_BETA: ${{ secrets.GH_TOKEN_BETA }}
+          GH_TOKEN_GAMMA: ${{ secrets.GH_TOKEN_GAMMA }}
+          GH_APP_ALPHA_CLIENT_ID: ${{ vars.GH_APP_ALPHA_CLIENT_ID }}
+          GH_APP_ALPHA_INSTALLATION_ID: ${{ vars.GH_APP_ALPHA_INSTALLATION_ID }}
+          GH_APP_ALPHA_PRIVATE_KEY: ${{ secrets.GH_APP_ALPHA_PRIVATE_KEY }}
+          GH_APP_BETA_CLIENT_ID: ${{ vars.GH_APP_BETA_CLIENT_ID }}
+          GH_APP_BETA_INSTALLATION_ID: ${{ vars.GH_APP_BETA_INSTALLATION_ID }}
+          GH_APP_BETA_PRIVATE_KEY: ${{ secrets.GH_APP_BETA_PRIVATE_KEY }}
+          GH_APP_GAMMA_CLIENT_ID: ${{ vars.GH_APP_GAMMA_CLIENT_ID }}
+          GH_APP_GAMMA_INSTALLATION_ID: ${{ vars.GH_APP_GAMMA_INSTALLATION_ID }}
+          GH_APP_GAMMA_PRIVATE_KEY: ${{ secrets.GH_APP_GAMMA_PRIVATE_KEY }}
+          GH_OAUTH_ALPHA_CLIENT_ID: ${{ vars.GH_OAUTH_ALPHA_CLIENT_ID }}
+          GH_OAUTH_ALPHA_CLIENT_SECRET: ${{ secrets.GH_OAUTH_ALPHA_CLIENT_SECRET }}
+          GH_OAUTH_BETA_CLIENT_ID: ${{ vars.GH_OAUTH_BETA_CLIENT_ID }}
+          GH_OAUTH_BETA_CLIENT_SECRET: ${{ secrets.GH_OAUTH_BETA_CLIENT_SECRET }}
+          GH_OAUTH_GAMMA_CLIENT_ID: ${{ vars.GH_OAUTH_GAMMA_CLIENT_ID }}
+          GH_OAUTH_GAMMA_CLIENT_SECRET: ${{ secrets.GH_OAUTH_GAMMA_CLIENT_SECRET }}
+
+  module:
     name: "${{ matrix.module == '.' && 'core' || matrix.module }}"
     runs-on: ubuntu-latest
     strategy:
+      fail-fast: false
       matrix:
         module:
           - .
           - bbolt
           - pebble
           - s3
-          - e2e
-    
+
     steps:
       - uses: actions/checkout@v6
       
