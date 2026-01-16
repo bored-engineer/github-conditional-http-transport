@@ -10,6 +10,7 @@ import (
 	"io"
 	"net/http"
 	"path"
+	"slices"
 	"strings"
 
 	"github.com/aws/aws-sdk-go-v2/aws"
@@ -22,6 +23,24 @@ import (
 // Key generates the S3 key from the URL.
 var Key = func(req *http.Request) string {
 	return strings.TrimPrefix(req.URL.String(), "https://")
+}
+
+// DropHeaders are the headers that are dropped before persisting the response to S3.
+var DropHeaders = []string{
+	"Access-Control-Allow-Origin",
+	"Access-Control-Expose-Headers",
+	"Content-Security-Policy",
+	"Referrer-Policy",
+	"Server",
+	"Strict-Transport-Security",
+	"X-Content-Type-Options",
+	"X-Frame-Options",
+	"X-Ratelimit-Limit",
+	"X-Ratelimit-Remaining",
+	"X-Ratelimit-Reset",
+	"X-Ratelimit-Resource",
+	"X-Ratelimit-Used",
+	"X-Xss-Protection",
 }
 
 // Storage implements the ghtransport.Storage interface backed by AWS S3.
@@ -109,23 +128,10 @@ func (s *Storage) Put(ctx context.Context, resp *http.Response) error {
 			input.ContentLanguage = aws.String(val)
 		case "Content-Type":
 			input.ContentType = aws.String(val)
-		case "Access-Control-Allow-Origin",
-			"Access-Control-Expose-Headers",
-			"Content-Security-Policy",
-			"Referrer-Policy",
-			"Server",
-			"Strict-Transport-Security",
-			"X-Content-Type-Options",
-			"X-Frame-Options",
-			"X-Ratelimit-Limit",
-			"X-Ratelimit-Remaining",
-			"X-Ratelimit-Reset",
-			"X-Ratelimit-Resource",
-			"X-Ratelimit-Used",
-			"X-Xss-Protection":
-			// Drop these headers, they're just noise.
 		default:
-			input.Metadata[key] = val
+			if !slices.Contains(DropHeaders, key) {
+				input.Metadata[key] = val
+			}
 		}
 	}
 	if _, err := s.Client.PutObject(ctx, input, s3.WithAPIOptions(
