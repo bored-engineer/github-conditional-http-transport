@@ -1,6 +1,6 @@
 module github.com/bored-engineer/github-conditional-http-transport/s3
 
-go 1.23.5
+go 1.24.0
 
 require (
 	github.com/aws/aws-sdk-go-v2 v1.41.1
