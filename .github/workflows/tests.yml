@@ -71,7 +71,7 @@ jobs:
         working-directory: redis
         run: go test -v ./...
         env:
-          REDIS_URL: http://127.0.0.1:6379
+          REDIS_URL: 127.0.0.1:6379
       
       - name: Run tests (e2e)
         working-directory: e2e
