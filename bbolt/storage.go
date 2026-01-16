@@ -55,7 +55,7 @@ func (s *Storage) Put(ctx context.Context, u *url.URL, resp *http.Response) erro
 	if err := s.DB.Update(func(tx *bbolt.Tx) error {
 		bucket := tx.Bucket(s.Bucket)
 		if bucket == nil {
-			return bbolt.ErrBucketNotFound
+			return errors.ErrBucketNotFound
 		}
 		if err := bucket.Put([]byte(u.String()), b); err != nil {
 			return fmt.Errorf("(*bbolt.Bucket).Put failed: %w", err)
