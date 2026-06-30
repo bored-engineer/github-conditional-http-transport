@@ -11,8 +11,14 @@ import (
 
 // addConditionalHeaders injects the conditional headers into the HTTP request if a cached response is available.
 func addConditionalHeaders(req *http.Request, cached *http.Response) error {
-	// If we have no cached response, bail, nothing to do
+	// If we have no cached response, speculatively guess the ETag for an empty `[]` response body
+	// This allows list endpoints that return no results to still benefit from a 304 Not Modified
 	if cached == nil {
+		h := Hash(req.Header, nil)
+		if _, err := h.Write([]byte("[]")); err != nil {
+			return fmt.Errorf("(hash.Hash).Write failed: %w", err)
+		}
+		req.Header.Set("If-None-Match", `"`+hex.EncodeToString(h.Sum(nil))+`"`)
 		return nil
 	}
 

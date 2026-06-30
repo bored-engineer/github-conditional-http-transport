@@ -14,9 +14,9 @@ func Test_addConditionalHeaders(t *testing.T) {
 		Expected string
 	}{
 		"nil": {
-			Request:  &http.Request{},
+			Request:  &http.Request{Header: http.Header{}},
 			Cached:   nil,
-			Expected: "",
+			Expected: `"4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945"`,
 		},
 		"vary": {
 			Request: &http.Request{
