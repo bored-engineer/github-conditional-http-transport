@@ -125,6 +125,34 @@ func TestTransport_RoundTrip(t *testing.T) {
 			wantBody:       "content",
 		},
 		{
+			name:      "cache miss, speculative empty array 304",
+			reqMethod: http.MethodGet,
+			reqURL:    "https://api.github.com/repos/foo/bar",
+			setupStorage: func(t *testing.T) Storage {
+				return &mockStorage{
+					getFunc: func(ctx context.Context, req *http.Request) (*http.Response, error) {
+						return nil, nil // miss
+					},
+				}
+			},
+			setupParent: func(t *testing.T) http.RoundTripper {
+				return &mockRoundTripper{
+					roundTripFunc: func(req *http.Request) (*http.Response, error) {
+						if inm := req.Header.Get("If-None-Match"); inm == "" {
+							t.Errorf("expected speculative If-None-Match to be set")
+						}
+						return &http.Response{
+							StatusCode: http.StatusNotModified,
+							Header:     make(http.Header),
+							Body:       io.NopCloser(strings.NewReader("")),
+						}, nil
+					},
+				}
+			},
+			wantStatusCode: http.StatusOK,
+			wantBody:       "[]",
+		},
+		{
 			name:      "storage error on Get",
 			reqMethod: http.MethodGet,
 			reqURL:    "https://api.github.com/repos/foo/bar",

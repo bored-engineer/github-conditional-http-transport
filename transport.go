@@ -53,7 +53,7 @@ func (t *transport) RoundTrip(req *http.Request) (resp *http.Response, _ error) 
 		return nil, fmt.Errorf("(http.RoundTripper).RoundTrip failed: %w", err)
 	}
 
-	if resp.StatusCode == http.StatusNotModified && cached != nil {
+	if resp.StatusCode == http.StatusNotModified {
 		// If the upstream response is 304 Not Modified, we can use the cached response
 
 		// Consume the rest of the response body to ensure the connection can be re-used
@@ -65,30 +65,40 @@ func (t *transport) RoundTrip(req *http.Request) (resp *http.Response, _ error) 
 		}
 
 		// Copy in any cached headers that are not already set
-		for key, vals := range cached.Header {
-			if strings.HasPrefix(key, VaryPrefix) {
-				continue // Skip the X-Varied-* headers, they are "internal" to the cache
+		if cached != nil {
+			for key, vals := range cached.Header {
+				if strings.HasPrefix(key, VaryPrefix) {
+					continue // Skip the X-Varied-* headers, they are "internal" to the cache
+				}
+				if key == "X-Github-Request-Id" {
+					// Return the original Request-Id header as well
+					resp.Header[CachedRequestIDHeader] = vals
+				}
+				if _, ok := resp.Header[key]; !ok {
+					resp.Header[key] = vals
+				}
 			}
-			if key == "X-Github-Request-Id" {
-				// Return the original Request-Id header as well
-				resp.Header[CachedRequestIDHeader] = vals
-			}
-			if _, ok := resp.Header[key]; !ok {
-				resp.Header[key] = vals
-			}
-		}
 
-		// Copy the body and status from the cache
-		resp.StatusCode = cached.StatusCode
-		resp.Status = cached.Status
+			// Copy the body and status from the cache
+			resp.StatusCode = cached.StatusCode
+			resp.Status = cached.Status
+		} else {
+			// Our speculative `[]` ETag guess matched the body
+			resp.StatusCode = http.StatusOK
+			resp.Status = http.StatusText(http.StatusOK)
+		}
 
 		// As a special case, if the request is a HEAD, we return an empty body
 		if req.Method == http.MethodHead {
 			resp.Body = io.NopCloser(strings.NewReader(""))
 			resp.ContentLength = 0
-		} else {
+		} else if cached != nil {
 			resp.Body = cached.Body
 			resp.ContentLength = cached.ContentLength
+		} else {
+			// We had no cached response, but our speculative `[]` ETag guess matched the body
+			resp.Body = io.NopCloser(strings.NewReader("[]"))
+			resp.ContentLength = 2
 		}
 
 	} else if resp.StatusCode == http.StatusOK && req.Method == http.MethodGet && resp.Header.Get("Etag") != "" {
