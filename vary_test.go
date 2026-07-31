@@ -57,6 +57,64 @@ func Test_identicalVary(t *testing.T) {
 			},
 			Expected: true,
 		},
+		"multi_value_mismatch": {
+			Request: &http.Request{
+				Header: http.Header{
+					"Accept": []string{"application/json", "application/xml"},
+				},
+			},
+			Cached: &http.Response{
+				Header: http.Header{
+					VaryPrefix + "Accept": []string{"application/json"},
+					"Vary":                []string{"Accept"},
+				},
+			},
+			Expected: false,
+		},
+		"multi_value_match": {
+			Request: &http.Request{
+				Header: http.Header{
+					"Accept": []string{"application/json", "application/xml"},
+				},
+			},
+			Cached: &http.Response{
+				Header: http.Header{
+					VaryPrefix + "Accept": []string{"application/json", "application/xml"},
+					"Vary":                []string{"Accept"},
+				},
+			},
+			Expected: true,
+		},
+		"wildcard": {
+			// Per RFC 9110 12.5.5, "Vary: *" means the representation may vary on
+			// unspecified request headers, so it can never be treated as identical -
+			// even though the request and cached response otherwise match exactly.
+			Request: &http.Request{
+				Header: http.Header{},
+			},
+			Cached: &http.Response{
+				Header: http.Header{
+					"Vary": []string{"*"},
+				},
+			},
+			Expected: false,
+		},
+		"wildcard_with_other_headers": {
+			// "*" short-circuits identicalVary regardless of where it appears in Vary
+			// or whether the other listed headers actually match.
+			Request: &http.Request{
+				Header: http.Header{
+					"Accept": []string{"application/json"},
+				},
+			},
+			Cached: &http.Response{
+				Header: http.Header{
+					VaryPrefix + "Accept": []string{"application/json"},
+					"Vary":                []string{"Accept, *"},
+				},
+			},
+			Expected: false,
+		},
 	}
 	for name, test := range tests {
 		t.Run(name, func(t *testing.T) {
@@ -87,6 +145,18 @@ func Test_parseVary(t *testing.T) {
 		"multiple": {
 			Headers:  http.Header{"Vary": []string{"Accept, Authorization", "Cookie"}},
 			Expected: []string{"Accept", "Authorization", "Cookie"},
+		},
+		"trailing_comma": {
+			Headers:  http.Header{"Vary": []string{"Accept,"}},
+			Expected: []string{"Accept"},
+		},
+		"double_comma": {
+			Headers:  http.Header{"Vary": []string{"Accept,,Cookie"}},
+			Expected: []string{"Accept", "Cookie"},
+		},
+		"wildcard": {
+			Headers:  http.Header{"Vary": []string{"*"}},
+			Expected: []string{"*"},
 		},
 	}
 	for name, test := range tests {

@@ -21,8 +21,12 @@ var VaryHeaders = []string{
 // The response body must be written to the hash before it can be used to calculate the ETag.
 func Hash(requestHeaders http.Header, vary []string) hash.Hash {
 	h := sha256.New()
+	// Per RFC 9110 12.5.5, "Vary: *" means the representation may vary on unspecified
+	// request headers, so we conservatively include every header we know GitHub's ETag
+	// algorithm can use (the same as vary == nil), rather than none of them.
+	all := vary == nil || slices.Contains(vary, "*")
 	for _, headerName := range VaryHeaders {
-		if vary == nil || slices.Contains(vary, headerName) {
+		if all || slices.Contains(vary, headerName) {
 			for _, headerValue := range requestHeaders.Values(headerName) {
 				h.Write(append([]byte(headerValue), ':'))
 			}

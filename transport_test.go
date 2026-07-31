@@ -8,7 +8,16 @@ import (
 	"net/http"
 	"strings"
 	"testing"
+	"testing/iotest"
 )
+
+// errCloseBody wraps an io.Reader with a Close method that returns a fixed error.
+type errCloseBody struct {
+	io.Reader
+	closeErr error
+}
+
+func (e *errCloseBody) Close() error { return e.closeErr }
 
 type mockStorage struct {
 	getFunc func(context.Context, *http.Request) (*http.Response, error)
@@ -85,6 +94,27 @@ func TestTransport_RoundTrip(t *testing.T) {
 			wantCacheStatus: cacheStatusForward("method", http.StatusCreated, false),
 		},
 		{
+			name:      "uncacheable request (POST), upstream error",
+			reqMethod: http.MethodPost,
+			reqURL:    "https://api.github.com/repos/foo/bar",
+			setupStorage: func(t *testing.T) Storage {
+				return &mockStorage{
+					getFunc: func(ctx context.Context, req *http.Request) (*http.Response, error) {
+						t.Error("storage.Get should not be called for POST")
+						return nil, nil
+					},
+				}
+			},
+			setupParent: func(t *testing.T) http.RoundTripper {
+				return &mockRoundTripper{
+					roundTripFunc: func(req *http.Request) (*http.Response, error) {
+						return nil, errors.New("upstream error")
+					},
+				}
+			},
+			wantErr: true,
+		},
+		{
 			name:      "cache miss, upstream OK, stores response",
 			reqMethod: http.MethodGet,
 			reqURL:    "https://api.github.com/repos/foo/bar",
@@ -119,6 +149,66 @@ func TestTransport_RoundTrip(t *testing.T) {
 							Header:        http.Header{},
 							Body:          io.NopCloser(strings.NewReader("content")),
 							ContentLength: 7,
+						}
+						resp.Header.Set("Etag", "tag1")
+						return resp, nil
+					},
+				}
+			},
+			wantStatusCode:  http.StatusOK,
+			wantBody:        "content",
+			wantXCache:      "MISS",
+			wantCacheStatus: cacheStatusForward("uri-miss", http.StatusOK, true),
+		},
+		{
+			name:      "cache miss, upstream OK with Vary, stores X-Varied-* headers",
+			reqMethod: http.MethodGet,
+			reqURL:    "https://api.github.com/repos/foo/bar",
+			reqHeader: http.Header{
+				"Accept":        []string{"application/vnd.github+json"},
+				"Authorization": []string{"Bearer hunter2"},
+				"Cookie":        []string{"session=abc123"},
+			},
+			setupStorage: func(t *testing.T) Storage {
+				return &mockStorage{
+					getFunc: func(ctx context.Context, req *http.Request) (*http.Response, error) {
+						return nil, nil // miss
+					},
+					putFunc: func(ctx context.Context, resp *http.Response) error {
+						if got, want := resp.Header.Get(VaryPrefix+"Accept"), "application/vnd.github+json"; got != want {
+							t.Errorf("X-Varied-Accept = %q, want %q", got, want)
+						}
+						// Authorization is hashed before being stored so the raw token never hits storage.
+						if got, want := resp.Header.Get(VaryPrefix+"Authorization"), HashToken("Bearer hunter2"); got != want {
+							t.Errorf("X-Varied-Authorization = %q, want %q (hashed)", got, want)
+						}
+						// NOTE: unlike Authorization, Cookie is currently stored raw/unhashed even though
+						// it can carry session credentials just as Authorization does. This documents the
+						// current behavior rather than asserting it's correct.
+						if got, want := resp.Header.Get(VaryPrefix+"Cookie"), "session=abc123"; got != want {
+							t.Errorf("X-Varied-Cookie = %q, want %q (raw, current behavior)", got, want)
+						}
+						content, err := io.ReadAll(resp.Body)
+						if err != nil {
+							t.Errorf("failed to read response body in Put: %v", err)
+						}
+						if string(content) != "content" {
+							t.Errorf("Put mismatch content: %s", content)
+						}
+						resp.Body = io.NopCloser(bytes.NewReader(content))
+						return nil
+					},
+				}
+			},
+			setupParent: func(t *testing.T) http.RoundTripper {
+				return &mockRoundTripper{
+					roundTripFunc: func(req *http.Request) (*http.Response, error) {
+						resp := &http.Response{
+							StatusCode: http.StatusOK,
+							Header: http.Header{
+								"Vary": []string{"Accept, Authorization, Cookie"},
+							},
+							Body: io.NopCloser(strings.NewReader("content")),
 						}
 						resp.Header.Set("Etag", "tag1")
 						return resp, nil
@@ -175,6 +265,124 @@ func TestTransport_RoundTrip(t *testing.T) {
 				return &mockRoundTripper{}
 			},
 			wantErr: true,
+		},
+		{
+			name:      "cached body read error surfaces as RoundTrip error",
+			reqMethod: http.MethodGet,
+			reqURL:    "https://api.github.com/repos/foo/bar",
+			reqHeader: http.Header{
+				"Accept": []string{"application/vnd.github+json"},
+			},
+			setupStorage: func(t *testing.T) Storage {
+				return &mockStorage{
+					getFunc: func(ctx context.Context, req *http.Request) (*http.Response, error) {
+						return &http.Response{
+							StatusCode: http.StatusOK,
+							Header: http.Header{
+								"Etag": []string{`"tag1"`},
+								// No X-Varied-Accept stored, forcing identicalVary to fail and the body to be read.
+								"Vary": []string{"Accept"},
+							},
+							Body: io.NopCloser(iotest.ErrReader(errors.New("read failed"))),
+						}, nil
+					},
+				}
+			},
+			setupParent: func(t *testing.T) http.RoundTripper {
+				return &mockRoundTripper{
+					roundTripFunc: func(req *http.Request) (*http.Response, error) {
+						t.Error("parent RoundTrip should not be called when addConditionalHeaders fails")
+						return nil, errors.New("should not reach upstream")
+					},
+				}
+			},
+			wantErr: true,
+		},
+		{
+			name:      "upstream 304 body read error",
+			reqMethod: http.MethodGet,
+			reqURL:    "https://api.github.com/repos/foo/bar",
+			setupStorage: func(t *testing.T) Storage {
+				return &mockStorage{
+					getFunc: func(ctx context.Context, req *http.Request) (*http.Response, error) {
+						return nil, nil // miss
+					},
+				}
+			},
+			setupParent: func(t *testing.T) http.RoundTripper {
+				return &mockRoundTripper{
+					roundTripFunc: func(req *http.Request) (*http.Response, error) {
+						return &http.Response{
+							StatusCode: http.StatusNotModified,
+							Header:     make(http.Header),
+							Body:       io.NopCloser(iotest.ErrReader(errors.New("copy failed"))),
+						}, nil
+					},
+				}
+			},
+			wantErr: true,
+		},
+		{
+			name:      "upstream 304 body close error",
+			reqMethod: http.MethodGet,
+			reqURL:    "https://api.github.com/repos/foo/bar",
+			setupStorage: func(t *testing.T) Storage {
+				return &mockStorage{
+					getFunc: func(ctx context.Context, req *http.Request) (*http.Response, error) {
+						return nil, nil // miss
+					},
+				}
+			},
+			setupParent: func(t *testing.T) http.RoundTripper {
+				return &mockRoundTripper{
+					roundTripFunc: func(req *http.Request) (*http.Response, error) {
+						return &http.Response{
+							StatusCode: http.StatusNotModified,
+							Header:     make(http.Header),
+							Body:       &errCloseBody{Reader: strings.NewReader(""), closeErr: errors.New("close failed")},
+						}, nil
+					},
+				}
+			},
+			wantErr: true,
+		},
+		{
+			name:      "HEAD cache hit returns empty body",
+			reqMethod: http.MethodHead,
+			reqURL:    "https://api.github.com/repos/foo/bar",
+			setupStorage: func(t *testing.T) Storage {
+				return &mockStorage{
+					getFunc: func(ctx context.Context, req *http.Request) (*http.Response, error) {
+						return &http.Response{
+							StatusCode: http.StatusOK,
+							Status:     "200 OK",
+							Header: http.Header{
+								"Etag": []string{`"tag1"`},
+							},
+							Body:          io.NopCloser(strings.NewReader("cached content")),
+							ContentLength: 14,
+						}, nil
+					},
+				}
+			},
+			setupParent: func(t *testing.T) http.RoundTripper {
+				return &mockRoundTripper{
+					roundTripFunc: func(req *http.Request) (*http.Response, error) {
+						if req.Method != http.MethodHead {
+							t.Errorf("expected upstream request method HEAD, got %s", req.Method)
+						}
+						return &http.Response{
+							StatusCode: http.StatusNotModified,
+							Header:     make(http.Header),
+							Body:       io.NopCloser(strings.NewReader("")),
+						}, nil
+					},
+				}
+			},
+			wantStatusCode:  http.StatusOK,
+			wantBody:        "",
+			wantXCache:      "HIT",
+			wantCacheStatus: cacheStatusHit(),
 		},
 		{
 			name:      "upstream 304 Not Modified, cache hit",
@@ -391,5 +599,65 @@ func TestCacheName_override(t *testing.T) {
 	want := `my-custom-cache; fwd=uri-miss; fwd-status=200; stored`
 	if got := resp.Header.Get("Cache-Status"); got != want {
 		t.Errorf("RoundTrip() %s = %q, want %q", "Cache-Status", got, want)
+	}
+}
+
+func TestNewTransport_defaultParent(t *testing.T) {
+	tr := NewTransport(&mockStorage{}, nil)
+	impl, ok := tr.(*transport)
+	if !ok {
+		t.Fatalf("NewTransport() returned %T, want *transport", tr)
+	}
+	if impl.parent != http.DefaultTransport {
+		t.Errorf("NewTransport() parent = %v, want http.DefaultTransport", impl.parent)
+	}
+}
+
+// TestTransport_RoundTrip_PutError documents current behavior when Storage.Put fails:
+// RoundTrip returns a non-nil *http.Response alongside the error. Most http.RoundTripper
+// callers (including net/http.Client) discard/never close the response when err != nil,
+// which can leak the underlying body/connection.
+func TestTransport_RoundTrip_PutError(t *testing.T) {
+	storage := &mockStorage{
+		getFunc: func(ctx context.Context, req *http.Request) (*http.Response, error) {
+			return nil, nil // miss
+		},
+		putFunc: func(ctx context.Context, resp *http.Response) error {
+			return errors.New("put failed")
+		},
+	}
+	parent := &mockRoundTripper{
+		roundTripFunc: func(req *http.Request) (*http.Response, error) {
+			resp := &http.Response{
+				StatusCode: http.StatusOK,
+				Header:     http.Header{},
+				Body:       io.NopCloser(strings.NewReader("content")),
+			}
+			resp.Header.Set("Etag", "tag1")
+			return resp, nil
+		},
+	}
+	tr := NewTransport(storage, parent)
+
+	req, err := http.NewRequest(http.MethodGet, "https://api.github.com/repos/foo/bar", nil)
+	if err != nil {
+		t.Fatalf("failed to create request: %v", err)
+	}
+
+	resp, err := tr.RoundTrip(req)
+	if err == nil {
+		t.Fatal("expected RoundTrip to return an error when Storage.Put fails")
+	}
+	if resp == nil {
+		t.Fatal("expected RoundTrip to return a non-nil response alongside the Put error (current behavior)")
+	}
+	defer resp.Body.Close()
+
+	body, readErr := io.ReadAll(resp.Body)
+	if readErr != nil {
+		t.Fatalf("failed to read response body: %v", readErr)
+	}
+	if string(body) != "content" {
+		t.Errorf("response body = %q, want %q", body, "content")
 	}
 }
