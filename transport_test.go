@@ -81,7 +81,7 @@ func TestTransport_RoundTrip(t *testing.T) {
 			},
 			wantStatusCode:  http.StatusCreated,
 			wantBody:        "created",
-			wantXCache:      XCacheBypassValue,
+			wantXCache:      XCacheMissValue,
 			wantCacheStatus: cacheStatusForward("method", http.StatusCreated, false),
 		},
 		{
@@ -127,7 +127,7 @@ func TestTransport_RoundTrip(t *testing.T) {
 			},
 			wantStatusCode:  http.StatusOK,
 			wantBody:        "content",
-			wantXCache:      XCacheStoredValue,
+			wantXCache:      XCacheMissValue,
 			wantCacheStatus: cacheStatusForward("uri-miss", http.StatusOK, true),
 		},
 		{
@@ -158,7 +158,7 @@ func TestTransport_RoundTrip(t *testing.T) {
 			wantStatusCode:  http.StatusOK,
 			wantBody:        "[]",
 			wantXCache:      XCacheValue,
-			wantCacheStatus: CacheStatusValue,
+			wantCacheStatus: cacheStatusHitSpeculative(),
 		},
 		{
 			name:      "storage error on Get",
@@ -214,7 +214,7 @@ func TestTransport_RoundTrip(t *testing.T) {
 			wantStatusCode:  http.StatusOK,
 			wantBody:        "cached content",
 			wantXCache:      XCacheValue,
-			wantCacheStatus: CacheStatusValue,
+			wantCacheStatus: cacheStatusHit(),
 		},
 		{
 			name:      "upstream 200 OK (modified), cache miss, stores response",
@@ -257,7 +257,7 @@ func TestTransport_RoundTrip(t *testing.T) {
 			},
 			wantStatusCode:  http.StatusOK,
 			wantBody:        "new content",
-			wantXCache:      XCacheStoredValue,
+			wantXCache:      XCacheMissValue,
 			wantCacheStatus: cacheStatusForward("stale", http.StatusOK, true),
 		},
 		{
@@ -354,5 +354,42 @@ func TestTransport_RoundTrip(t *testing.T) {
 				t.Errorf("RoundTrip() %s = %q, want %q", CacheStatusHeader, got, tt.wantCacheStatus)
 			}
 		})
+	}
+}
+
+func TestCacheName_override(t *testing.T) {
+	original := CacheName
+	CacheName = "my-custom-cache"
+	defer func() { CacheName = original }()
+
+	tr := NewTransport(
+		&mockStorage{},
+		&mockRoundTripper{
+			roundTripFunc: func(req *http.Request) (*http.Response, error) {
+				resp := &http.Response{
+					StatusCode: http.StatusOK,
+					Header:     http.Header{},
+					Body:       io.NopCloser(strings.NewReader("content")),
+				}
+				resp.Header.Set("Etag", "tag1")
+				return resp, nil
+			},
+		},
+	)
+
+	req, err := http.NewRequest(http.MethodGet, "https://api.github.com/repos/foo/bar", nil)
+	if err != nil {
+		t.Fatalf("failed to create request: %v", err)
+	}
+
+	resp, err := tr.RoundTrip(req)
+	if err != nil {
+		t.Fatalf("RoundTrip() error = %v", err)
+	}
+	defer resp.Body.Close()
+
+	want := `my-custom-cache; fwd=uri-miss; fwd-status=200; stored`
+	if got := resp.Header.Get(CacheStatusHeader); got != want {
+		t.Errorf("RoundTrip() %s = %q, want %q", CacheStatusHeader, got, want)
 	}
 }

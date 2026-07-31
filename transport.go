@@ -17,21 +17,28 @@ const CacheStatusHeader = "Cache-Status"
 // XCacheHeader is set on every response using the de facto X-Cache convention, e.g. `X-Cache: HIT`.
 const XCacheHeader = "X-Cache"
 
-// cacheName identifies this cache in the CacheStatusHeader, per RFC 9211.
-const cacheName = "github-conditional-http-transport"
+// CacheName identifies this cache in the CacheStatusHeader, per RFC 9211. It may be overridden
+// (e.g. by an application embedding this transport under its own name) before use.
+var CacheName = "github-conditional-http-transport"
 
-// CacheStatusValue/XCacheValue are set when the response was served from the cache.
-const (
-	CacheStatusValue = cacheName + `; hit`
-	XCacheValue      = "HIT"
-)
+// XCacheValue is set on XCacheHeader when the response was served from the cache.
+const XCacheValue = "HIT"
 
-// XCacheMissValue/XCacheStoredValue/XCacheBypassValue are set on XCacheHeader when the response was not served from the cache.
-const (
-	XCacheMissValue   = "MISS"
-	XCacheStoredValue = "MISS; stored"
-	XCacheBypassValue = "BYPASS"
-)
+// XCacheMissValue is set on XCacheHeader when the response was not served from the cache;
+// see CacheStatusHeader for the reason (bypass, miss, stale, stored, etc).
+const XCacheMissValue = "MISS"
+
+// cacheStatusHit builds the CacheStatusHeader value for a cache hit.
+func cacheStatusHit() string {
+	return CacheName + `; hit`
+}
+
+// cacheStatusHitSpeculative builds the CacheStatusHeader value for a "hit" that was the result of a
+// speculative `[]` ETag guess (i.e. no response was ever actually stored for this request), per RFC
+// 9211's optional "detail" parameter for conveying implementation-specific information.
+func cacheStatusHitSpeculative() string {
+	return cacheStatusHit() + `; detail=speculative-empty-array`
+}
 
 type transport struct {
 	storage Storage
@@ -51,7 +58,7 @@ func setCacheStatus(resp *http.Response, cacheStatus, xCache string) {
 // (i.e. not a cache hit), recording the reason (per RFC 9211's fwd parameter), the resulting upstream
 // status code (fwd-status), and whether the response was stored for future requests.
 func cacheStatusForward(reason string, statusCode int, stored bool) string {
-	v := fmt.Sprintf("%s; fwd=%s; fwd-status=%d", cacheName, reason, statusCode)
+	v := fmt.Sprintf("%s; fwd=%s; fwd-status=%d", CacheName, reason, statusCode)
 	if stored {
 		v += "; stored"
 	}
@@ -66,7 +73,7 @@ func (t *transport) RoundTrip(req *http.Request) (resp *http.Response, _ error) 
 		if err != nil {
 			return nil, err
 		}
-		setCacheStatus(resp, cacheStatusForward(reason, resp.StatusCode, false), XCacheBypassValue)
+		setCacheStatus(resp, cacheStatusForward(reason, resp.StatusCode, false), XCacheMissValue)
 		return resp, nil
 	}
 
@@ -112,7 +119,12 @@ func (t *transport) RoundTrip(req *http.Request) (resp *http.Response, _ error) 
 		}
 
 		// Indicate the response was served from cache
-		setCacheStatus(resp, CacheStatusValue, XCacheValue)
+		if cached != nil {
+			setCacheStatus(resp, cacheStatusHit(), XCacheValue)
+		} else {
+			// Our speculative `[]` ETag guess matched; nothing was ever actually stored for this request
+			setCacheStatus(resp, cacheStatusHitSpeculative(), XCacheValue)
+		}
 
 		// Copy in any cached headers that are not already set
 		if cached != nil {
@@ -188,11 +200,7 @@ func (t *transport) RoundTrip(req *http.Request) (resp *http.Response, _ error) 
 		if cached != nil {
 			reason = "stale"
 		}
-		if stored {
-			setCacheStatus(resp, cacheStatusForward(reason, resp.StatusCode, true), XCacheStoredValue)
-		} else {
-			setCacheStatus(resp, cacheStatusForward(reason, resp.StatusCode, false), XCacheMissValue)
-		}
+		setCacheStatus(resp, cacheStatusForward(reason, resp.StatusCode, stored), XCacheMissValue)
 	}
 
 	return resp, nil
