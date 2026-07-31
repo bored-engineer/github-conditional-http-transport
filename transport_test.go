@@ -54,8 +54,8 @@ func TestTransport_RoundTrip(t *testing.T) {
 		wantStatusCode  int
 		wantBody        string
 		wantErr         bool
-		wantXCache      string // expected XCacheHeader value
-		wantCacheStatus string // expected CacheStatusHeader value
+		wantXCache      string // expected "X-Cache" header value
+		wantCacheStatus string // expected "Cache-Status" header value
 	}{
 		{
 			name:      "uncacheable request (POST) passes through",
@@ -81,7 +81,7 @@ func TestTransport_RoundTrip(t *testing.T) {
 			},
 			wantStatusCode:  http.StatusCreated,
 			wantBody:        "created",
-			wantXCache:      XCacheMissValue,
+			wantXCache:      "MISS",
 			wantCacheStatus: cacheStatusForward("method", http.StatusCreated, false),
 		},
 		{
@@ -127,7 +127,7 @@ func TestTransport_RoundTrip(t *testing.T) {
 			},
 			wantStatusCode:  http.StatusOK,
 			wantBody:        "content",
-			wantXCache:      XCacheMissValue,
+			wantXCache:      "MISS",
 			wantCacheStatus: cacheStatusForward("uri-miss", http.StatusOK, true),
 		},
 		{
@@ -157,7 +157,7 @@ func TestTransport_RoundTrip(t *testing.T) {
 			},
 			wantStatusCode:  http.StatusOK,
 			wantBody:        "[]",
-			wantXCache:      XCacheValue,
+			wantXCache:      "HIT",
 			wantCacheStatus: cacheStatusHitSpeculative(),
 		},
 		{
@@ -213,7 +213,7 @@ func TestTransport_RoundTrip(t *testing.T) {
 			},
 			wantStatusCode:  http.StatusOK,
 			wantBody:        "cached content",
-			wantXCache:      XCacheValue,
+			wantXCache:      "HIT",
 			wantCacheStatus: cacheStatusHit(),
 		},
 		{
@@ -257,7 +257,7 @@ func TestTransport_RoundTrip(t *testing.T) {
 			},
 			wantStatusCode:  http.StatusOK,
 			wantBody:        "new content",
-			wantXCache:      XCacheMissValue,
+			wantXCache:      "MISS",
 			wantCacheStatus: cacheStatusForward("stale", http.StatusOK, true),
 		},
 		{
@@ -347,11 +347,11 @@ func TestTransport_RoundTrip(t *testing.T) {
 				t.Errorf("RoundTrip() body = %q, want %q", string(body), tt.wantBody)
 			}
 
-			if got := resp.Header.Get(XCacheHeader); got != tt.wantXCache {
-				t.Errorf("RoundTrip() %s = %q, want %q", XCacheHeader, got, tt.wantXCache)
+			if got := resp.Header.Get("X-Cache"); got != tt.wantXCache {
+				t.Errorf("RoundTrip() %s = %q, want %q", "X-Cache", got, tt.wantXCache)
 			}
-			if got := resp.Header.Get(CacheStatusHeader); got != tt.wantCacheStatus {
-				t.Errorf("RoundTrip() %s = %q, want %q", CacheStatusHeader, got, tt.wantCacheStatus)
+			if got := resp.Header.Get("Cache-Status"); got != tt.wantCacheStatus {
+				t.Errorf("RoundTrip() %s = %q, want %q", "Cache-Status", got, tt.wantCacheStatus)
 			}
 		})
 	}
@@ -389,7 +389,7 @@ func TestCacheName_override(t *testing.T) {
 	defer resp.Body.Close()
 
 	want := `my-custom-cache; fwd=uri-miss; fwd-status=200; stored`
-	if got := resp.Header.Get(CacheStatusHeader); got != want {
-		t.Errorf("RoundTrip() %s = %q, want %q", CacheStatusHeader, got, want)
+	if got := resp.Header.Get("Cache-Status"); got != want {
+		t.Errorf("RoundTrip() %s = %q, want %q", "Cache-Status", got, want)
 	}
 }
