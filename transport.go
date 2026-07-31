@@ -11,29 +11,16 @@ import (
 // CachedRequestIDHeader is the X-Github-Request-Id header from the cached response.
 const CachedRequestIDHeader = "X-Cached-Request-Id"
 
-// CacheStatusHeader is set on every response per RFC 9211, e.g. `Cache-Status: github-conditional-http-transport; hit`.
-const CacheStatusHeader = "Cache-Status"
-
-// XCacheHeader is set on every response using the de facto X-Cache convention, e.g. `X-Cache: HIT`.
-const XCacheHeader = "X-Cache"
-
-// CacheName identifies this cache in the CacheStatusHeader, per RFC 9211. It may be overridden
+// CacheName identifies this cache in the "Cache-Status" header, per RFC 9211. It may be overridden
 // (e.g. by an application embedding this transport under its own name) before use.
 var CacheName = "github-conditional-http-transport"
 
-// XCacheValue is set on XCacheHeader when the response was served from the cache.
-const XCacheValue = "HIT"
-
-// XCacheMissValue is set on XCacheHeader when the response was not served from the cache;
-// see CacheStatusHeader for the reason (bypass, miss, stale, stored, etc).
-const XCacheMissValue = "MISS"
-
-// cacheStatusHit builds the CacheStatusHeader value for a cache hit.
+// cacheStatusHit builds the "Cache-Status" header value for a cache hit.
 func cacheStatusHit() string {
 	return CacheName + `; hit`
 }
 
-// cacheStatusHitSpeculative builds the CacheStatusHeader value for a "hit" that was the result of a
+// cacheStatusHitSpeculative builds the "Cache-Status" header value for a "hit" that was the result of a
 // speculative `[]` ETag guess (i.e. no response was ever actually stored for this request), per RFC
 // 9211's optional "detail" parameter for conveying implementation-specific information.
 func cacheStatusHitSpeculative() string {
@@ -45,16 +32,16 @@ type transport struct {
 	parent  http.RoundTripper
 }
 
-// setCacheStatus sets the CacheStatusHeader/XCacheHeader pair on resp, initializing resp.Header if necessary.
+// setCacheStatus sets the "Cache-Status"/"X-Cache" header pair on resp, initializing resp.Header if necessary.
 func setCacheStatus(resp *http.Response, cacheStatus, xCache string) {
 	if resp.Header == nil {
 		resp.Header = make(http.Header)
 	}
-	resp.Header.Set(CacheStatusHeader, cacheStatus)
-	resp.Header.Set(XCacheHeader, xCache)
+	resp.Header.Set("Cache-Status", cacheStatus)
+	resp.Header.Set("X-Cache", xCache)
 }
 
-// cacheStatusForward builds the CacheStatusHeader value for a request that was forwarded upstream
+// cacheStatusForward builds the "Cache-Status" header value for a request that was forwarded upstream
 // (i.e. not a cache hit), recording the reason (per RFC 9211's fwd parameter), the resulting upstream
 // status code (fwd-status), and whether the response was stored for future requests.
 func cacheStatusForward(reason string, statusCode int, stored bool) string {
@@ -73,7 +60,7 @@ func (t *transport) RoundTrip(req *http.Request) (resp *http.Response, _ error) 
 		if err != nil {
 			return nil, err
 		}
-		setCacheStatus(resp, cacheStatusForward(reason, resp.StatusCode, false), XCacheMissValue)
+		setCacheStatus(resp, cacheStatusForward(reason, resp.StatusCode, false), "MISS")
 		return resp, nil
 	}
 
@@ -120,10 +107,10 @@ func (t *transport) RoundTrip(req *http.Request) (resp *http.Response, _ error) 
 
 		// Indicate the response was served from cache
 		if cached != nil {
-			setCacheStatus(resp, cacheStatusHit(), XCacheValue)
+			setCacheStatus(resp, cacheStatusHit(), "HIT")
 		} else {
 			// Our speculative `[]` ETag guess matched; nothing was ever actually stored for this request
-			setCacheStatus(resp, cacheStatusHitSpeculative(), XCacheValue)
+			setCacheStatus(resp, cacheStatusHitSpeculative(), "HIT")
 		}
 
 		// Copy in any cached headers that are not already set
@@ -200,7 +187,7 @@ func (t *transport) RoundTrip(req *http.Request) (resp *http.Response, _ error) 
 		if cached != nil {
 			reason = "stale"
 		}
-		setCacheStatus(resp, cacheStatusForward(reason, resp.StatusCode, stored), XCacheMissValue)
+		setCacheStatus(resp, cacheStatusForward(reason, resp.StatusCode, stored), "MISS")
 	}
 
 	return resp, nil
