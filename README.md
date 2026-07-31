@@ -136,7 +136,7 @@ Using this reverse-engineered `ETag` algorithm, we can develop a [http.RoundTrip
 * Add the _expected_ `ETag` to the request via the `If-None-Modified` header, then perform the HTTP request
 * If the HTTP response code is `304 Not Modified`, our cached value is still valid
     * Return the response headers (request-id, ratelimit headers, etc) but the cached HTTP response bytes
-* If the HTTP response code is `200 OK` or `201 Created` and an `ETag` header is present
+* If the HTTP request method is `GET`, the HTTP response code is `200 OK`, and an `ETag` header is present
     * Store the response bytes in the cache storage
 * Return the HTTP response
 

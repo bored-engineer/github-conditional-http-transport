@@ -46,6 +46,42 @@ func Test_cacheable(t *testing.T) {
 			Expected:    false,
 			ExpectedFwd: "method",
 		},
+		"put": {
+			Request: &http.Request{
+				Method: "PUT",
+				URL: &url.URL{
+					Scheme: "https",
+					Host:   "api.github.com",
+					Path:   "/users/bored-engineer",
+				},
+			},
+			Expected:    false,
+			ExpectedFwd: "method",
+		},
+		"patch": {
+			Request: &http.Request{
+				Method: "PATCH",
+				URL: &url.URL{
+					Scheme: "https",
+					Host:   "api.github.com",
+					Path:   "/users/bored-engineer",
+				},
+			},
+			Expected:    false,
+			ExpectedFwd: "method",
+		},
+		"delete": {
+			Request: &http.Request{
+				Method: "DELETE",
+				URL: &url.URL{
+					Scheme: "https",
+					Host:   "api.github.com",
+					Path:   "/users/bored-engineer",
+				},
+			},
+			Expected:    false,
+			ExpectedFwd: "method",
+		},
 		"range": {
 			Request: &http.Request{
 				Method: "GET",

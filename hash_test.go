@@ -1,6 +1,7 @@
 package ghtransport
 
 import (
+	"encoding/base64"
 	"encoding/hex"
 	"net/http"
 	"testing"
@@ -53,6 +54,27 @@ func TestHash(t *testing.T) {
 			Expected: "2c3b29a72c9c09135a89fe51c46613393b445efabdf6f02105dc1561237093a4",
 			Vary:     []string{"Accept", "Authorization"},
 		},
+		"vary_wildcard": {
+			// "Vary: *" is treated the same as vary == nil: every header GitHub's ETag
+			// algorithm can use is included, since we don't know which ones actually matter.
+			Headers: http.Header{
+				"Accept":        []string{"application/vnd.github.v3+json"},
+				"Authorization": []string{"Bearer hunter2"},
+			},
+			Body:     testBody,
+			Expected: "2c3b29a72c9c09135a89fe51c46613393b445efabdf6f02105dc1561237093a4",
+			Vary:     []string{"*"},
+		},
+		"vary_wildcard_mixed": {
+			// "*" alongside explicit header names still results in every header being included.
+			Headers: http.Header{
+				"Accept":        []string{"application/vnd.github.v3+json"},
+				"Authorization": []string{"Bearer hunter2"},
+			},
+			Body:     testBody,
+			Expected: "2c3b29a72c9c09135a89fe51c46613393b445efabdf6f02105dc1561237093a4",
+			Vary:     []string{"Accept", "*"},
+		},
 	}
 	for name, test := range tests {
 		t.Run(name, func(t *testing.T) {
@@ -85,6 +107,27 @@ func TestHashToken(t *testing.T) {
 		"token": {
 			Authorization: "token hunter2",
 			Expected:      "9S+9MrKzuG/4jvbEkGKChfSCrxXdyylUH5S89Saj9sc=",
+		},
+		// The following all fall through to hashing an empty string, matching "empty" above.
+		"bearer_no_token": {
+			Authorization: "Bearer ",
+			Expected:      "47DEQpj8HBSa+/TImW+5JCeuQeRkm5NMpJWZG3hSuFU=",
+		},
+		"basic_invalid_base64": {
+			Authorization: "Basic not-valid-base64!!",
+			Expected:      "47DEQpj8HBSa+/TImW+5JCeuQeRkm5NMpJWZG3hSuFU=",
+		},
+		"basic_no_colon": {
+			Authorization: "Basic " + base64.StdEncoding.EncodeToString([]byte("nocolonhere")),
+			Expected:      "47DEQpj8HBSa+/TImW+5JCeuQeRkm5NMpJWZG3hSuFU=",
+		},
+		"basic_empty_password": {
+			Authorization: "Basic " + base64.StdEncoding.EncodeToString([]byte("user:")),
+			Expected:      "47DEQpj8HBSa+/TImW+5JCeuQeRkm5NMpJWZG3hSuFU=",
+		},
+		"unrecognized_scheme": {
+			Authorization: "Digest hunter2",
+			Expected:      "47DEQpj8HBSa+/TImW+5JCeuQeRkm5NMpJWZG3hSuFU=",
 		},
 	}
 	for name, test := range tests {
