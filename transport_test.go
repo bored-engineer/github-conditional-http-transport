@@ -45,15 +45,17 @@ func (m *mockRoundTripper) RoundTrip(req *http.Request) (*http.Response, error) 
 
 func TestTransport_RoundTrip(t *testing.T) {
 	tests := []struct {
-		name           string
-		reqMethod      string
-		reqURL         string
-		reqHeader      http.Header
-		setupStorage   func(*testing.T) Storage
-		setupParent    func(*testing.T) http.RoundTripper
-		wantStatusCode int
-		wantBody       string
-		wantErr        bool
+		name            string
+		reqMethod       string
+		reqURL          string
+		reqHeader       http.Header
+		setupStorage    func(*testing.T) Storage
+		setupParent     func(*testing.T) http.RoundTripper
+		wantStatusCode  int
+		wantBody        string
+		wantErr         bool
+		wantXCache      string // expected XCacheHeader value
+		wantCacheStatus string // expected CacheStatusHeader value
 	}{
 		{
 			name:      "uncacheable request (POST) passes through",
@@ -77,8 +79,10 @@ func TestTransport_RoundTrip(t *testing.T) {
 					},
 				}
 			},
-			wantStatusCode: http.StatusCreated,
-			wantBody:       "created",
+			wantStatusCode:  http.StatusCreated,
+			wantBody:        "created",
+			wantXCache:      XCacheBypassValue,
+			wantCacheStatus: cacheStatusForward("method", http.StatusCreated, false),
 		},
 		{
 			name:      "cache miss, upstream OK, stores response",
@@ -121,8 +125,10 @@ func TestTransport_RoundTrip(t *testing.T) {
 					},
 				}
 			},
-			wantStatusCode: http.StatusOK,
-			wantBody:       "content",
+			wantStatusCode:  http.StatusOK,
+			wantBody:        "content",
+			wantXCache:      XCacheStoredValue,
+			wantCacheStatus: cacheStatusForward("uri-miss", http.StatusOK, true),
 		},
 		{
 			name:      "cache miss, speculative empty array 304",
@@ -149,8 +155,10 @@ func TestTransport_RoundTrip(t *testing.T) {
 					},
 				}
 			},
-			wantStatusCode: http.StatusOK,
-			wantBody:       "[]",
+			wantStatusCode:  http.StatusOK,
+			wantBody:        "[]",
+			wantXCache:      XCacheValue,
+			wantCacheStatus: CacheStatusValue,
 		},
 		{
 			name:      "storage error on Get",
@@ -203,11 +211,13 @@ func TestTransport_RoundTrip(t *testing.T) {
 					},
 				}
 			},
-			wantStatusCode: http.StatusOK,
-			wantBody:       "cached content",
+			wantStatusCode:  http.StatusOK,
+			wantBody:        "cached content",
+			wantXCache:      XCacheValue,
+			wantCacheStatus: CacheStatusValue,
 		},
 		{
-			name:      "upstream 200 OK (modified), cache hit",
+			name:      "upstream 200 OK (modified), cache miss, stores response",
 			reqMethod: http.MethodGet,
 			reqURL:    "https://api.github.com/repos/foo/bar",
 			setupStorage: func(t *testing.T) Storage {
@@ -245,8 +255,10 @@ func TestTransport_RoundTrip(t *testing.T) {
 					},
 				}
 			},
-			wantStatusCode: http.StatusOK,
-			wantBody:       "new content",
+			wantStatusCode:  http.StatusOK,
+			wantBody:        "new content",
+			wantXCache:      XCacheStoredValue,
+			wantCacheStatus: cacheStatusForward("stale", http.StatusOK, true),
 		},
 		{
 			name:      "upstream error",
@@ -333,6 +345,13 @@ func TestTransport_RoundTrip(t *testing.T) {
 			body, _ := io.ReadAll(resp.Body)
 			if string(body) != tt.wantBody {
 				t.Errorf("RoundTrip() body = %q, want %q", string(body), tt.wantBody)
+			}
+
+			if got := resp.Header.Get(XCacheHeader); got != tt.wantXCache {
+				t.Errorf("RoundTrip() %s = %q, want %q", XCacheHeader, got, tt.wantXCache)
+			}
+			if got := resp.Header.Get(CacheStatusHeader); got != tt.wantCacheStatus {
+				t.Errorf("RoundTrip() %s = %q, want %q", CacheStatusHeader, got, tt.wantCacheStatus)
 			}
 		})
 	}
