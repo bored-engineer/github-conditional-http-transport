@@ -1,6 +1,6 @@
 module github.com/bored-engineer/github-conditional-http-transport/internal/e2e
 
-go 1.24.0
+go 1.25.0
 
 replace github.com/bored-engineer/github-conditional-http-transport => ../../
 
