@@ -64,10 +64,14 @@ func (t *transport) RoundTrip(req *http.Request) (resp *http.Response, _ error) 
 		return resp, nil
 	}
 
-	// Attempt to fetch from storage
-	cached, err := t.storage.Get(req.Context(), req)
-	if err != nil {
-		return nil, fmt.Errorf("(Storage).Get failed: %w", err)
+	// Attempt to fetch from storage, if one is configured
+	var cached *http.Response
+	var err error
+	if t.storage != nil {
+		cached, err = t.storage.Get(req.Context(), req)
+		if err != nil {
+			return nil, fmt.Errorf("(Storage).Get failed: %w", err)
+		}
 	}
 	defer func() {
 		// If we did not utilize the cached response, ensure it is consumed and closed
@@ -153,7 +157,7 @@ func (t *transport) RoundTrip(req *http.Request) (resp *http.Response, _ error) 
 	} else {
 		stored := false
 
-		if resp.StatusCode == http.StatusOK && req.Method == http.MethodGet && resp.Header.Get("Etag") != "" {
+		if t.storage != nil && resp.StatusCode == http.StatusOK && req.Method == http.MethodGet && resp.Header.Get("Etag") != "" {
 			// Make a shallow copy of the *http.Response as we're going to modify the headers for storage
 			cacheResp := *resp
 			cacheResp.Header = maps.Clone(resp.Header)
@@ -194,6 +198,8 @@ func (t *transport) RoundTrip(req *http.Request) (resp *http.Response, _ error) 
 }
 
 // NewTransport creates a new http.RoundTripper that reads/writes responses from the Storage.
+// A nil storage is safe to pass: nothing is ever read from or written to it, but the speculative
+// empty-array ETag guess (see addConditionalHeaders) still applies to every cacheable request.
 func NewTransport(storage Storage, parent http.RoundTripper) http.RoundTripper {
 	if parent == nil {
 		parent = http.DefaultTransport

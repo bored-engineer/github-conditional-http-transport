@@ -303,6 +303,58 @@ func TestTransport_RoundTrip(t *testing.T) {
 			},
 			wantErr: true,
 		},
+		{
+			name:      "nil storage, speculative empty array 304",
+			reqMethod: http.MethodGet,
+			reqURL:    "https://api.github.com/repos/foo/bar",
+			setupStorage: func(t *testing.T) Storage {
+				return nil
+			},
+			setupParent: func(t *testing.T) http.RoundTripper {
+				return &mockRoundTripper{
+					roundTripFunc: func(req *http.Request) (*http.Response, error) {
+						if inm := req.Header.Get("If-None-Match"); inm == "" {
+							t.Errorf("expected speculative If-None-Match to be set")
+						}
+						return &http.Response{
+							StatusCode: http.StatusNotModified,
+							Header:     make(http.Header),
+							Body:       io.NopCloser(strings.NewReader("")),
+						}, nil
+					},
+				}
+			},
+			wantStatusCode:  http.StatusOK,
+			wantBody:        "[]",
+			wantXCache:      "HIT",
+			wantCacheStatus: cacheStatusHitSpeculative(),
+		},
+		{
+			name:      "nil storage, upstream 200 OK is not stored",
+			reqMethod: http.MethodGet,
+			reqURL:    "https://api.github.com/repos/foo/bar",
+			setupStorage: func(t *testing.T) Storage {
+				return nil
+			},
+			setupParent: func(t *testing.T) http.RoundTripper {
+				return &mockRoundTripper{
+					roundTripFunc: func(req *http.Request) (*http.Response, error) {
+						resp := &http.Response{
+							StatusCode:    http.StatusOK,
+							Header:        http.Header{},
+							Body:          io.NopCloser(strings.NewReader("content")),
+							ContentLength: 7,
+						}
+						resp.Header.Set("Etag", "tag1")
+						return resp, nil
+					},
+				}
+			},
+			wantStatusCode:  http.StatusOK,
+			wantBody:        "content",
+			wantXCache:      "MISS",
+			wantCacheStatus: cacheStatusForward("uri-miss", http.StatusOK, false),
+		},
 	}
 
 	for _, tt := range tests {
